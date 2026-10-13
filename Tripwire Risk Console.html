@@ -1,0 +1,858 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Tripwire Risk Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a three-band console. Top: live KPIs. Middle: stream beside decision. Bottom: network, cases, model. */
+:root{
+  --bg:#f5f3ee; --panel:#fffdf9; --ink:#1b1f24; --mute:#66707c; --line:#e3ded3; --accent:#0d6e6a;
+  --allow:#2f7d4f; --stepup:#b7791f; --hold:#c2570c; --block:#b42335; --flag:#b42335;
+  --chip-bg:#efebe2; --sel:#e6f1ef; --shadow:0 1px 0 rgba(0,0,0,.04);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11151a; --panel:#181d24; --ink:#e9ecef; --mute:#8d97a3; --line:#2a313b; --accent:#5fc6bd;
+    --allow:#6cc68d; --stepup:#e0b055; --hold:#f08a4b; --block:#ff7a85; --flag:#ff7a85;
+    --chip-bg:#222a33; --sel:#1d2d31; --shadow:none; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11151a; --panel:#181d24; --ink:#e9ecef; --mute:#8d97a3; --line:#2a313b; --accent:#5fc6bd;
+  --allow:#6cc68d; --stepup:#e0b055; --hold:#f08a4b; --block:#ff7a85; --flag:#ff7a85;
+  --chip-bg:#222a33; --sel:#1d2d31; --shadow:none; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 "IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;padding-inline:16px;padding-block:18px 32px;min-height:100%}
+.mono{font-family:"IBM Plex Mono",ui-monospace,Menlo,monospace;font-variant-numeric:tabular-nums}
+.dim{color:var(--mute)}
+.sub{font-size:12px;color:var(--mute);line-height:1.45}
+.empty{color:var(--mute);font-size:13px;padding:12px 0}
+header{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:flex-end;justify-content:space-between;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.brand h1{margin:0;font:600 30px/1.05 Fraunces,Georgia,serif;letter-spacing:-.01em;text-wrap:balance}
+.brand p{margin:6px 0 0;color:var(--mute);max-width:60ch;font-size:13.5px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.status{font:500 12px "IBM Plex Mono",monospace;text-transform:uppercase;letter-spacing:.08em;color:var(--allow);display:inline-flex;gap:6px;align-items:center}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;animation:pulse 1.6s infinite}
+.status.paused{color:var(--mute)}
+.status.paused::before{animation:none;background:var(--mute)}
+@keyframes pulse{50%{opacity:.25}}
+.btn{font:500 13px "IBM Plex Sans",sans-serif;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer;min-height:34px}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible,select:focus-visible,input:focus-visible,tr[data-id]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn.danger{color:var(--block);border-color:color-mix(in srgb,var(--block) 45%,var(--line))}
+.btn.ghost{background:transparent}
+select{font:13px "IBM Plex Sans",sans-serif;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 8px;min-height:34px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:16px}
+.kpi{background:var(--panel);padding:12px 14px;min-width:0}
+.k-l{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--mute)}
+.k-v{font:600 26px/1.15 Fraunces,Georgia,serif;margin-top:2px;font-variant-numeric:tabular-nums}
+.k-s{font-size:12px;color:var(--mute)}
+.k-r{font:500 11.5px "IBM Plex Mono",monospace;color:var(--mute);margin-top:4px}
+.grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:16px;margin-top:16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0;box-shadow:var(--shadow)}
+.ph{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.ph h2{margin:0;font:600 17px/1.2 Fraunces,Georgia,serif}
+.tablewrap{overflow-x:auto;margin:0 -4px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);font-weight:500;text-align:left;padding:6px 6px;border-bottom:1px solid var(--line)}
+td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+td.r{text-align:right}
+tr[data-id]{cursor:pointer}
+tr[data-id]:hover td{background:color-mix(in srgb,var(--accent) 6%,transparent)}
+tr.sel td{background:var(--sel)}
+.pair{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+.arrow{color:var(--mute);margin:0 5px}
+.meter{height:6px;width:72px;background:var(--chip-bg);border-radius:3px;overflow:hidden}
+.meter span{display:block;height:100%;background:var(--accent)}
+.chip{display:inline-flex;align-items:center;font:500 11.5px "IBM Plex Sans",sans-serif;padding:2px 8px;border-radius:999px;border:1px solid currentColor;white-space:nowrap;background:transparent}
+.chip.allow{color:var(--allow)}.chip.stepup{color:var(--stepup)}.chip.hold{color:var(--hold)}.chip.block{color:var(--block)}
+.chip.big{font-size:13px;padding:3px 10px}
+.dh-top{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.dh-amt{font:600 34px/1.1 Fraunces,Georgia,serif;margin-top:10px;font-variant-numeric:tabular-nums}
+.big2{font-size:15px;margin-top:2px}
+.gauge{position:relative;height:12px;background:var(--chip-bg);border-radius:6px;margin-top:14px}
+.gfill{height:100%;border-radius:6px;background:var(--allow);transition:width .4s}
+.gfill.stepup{background:var(--stepup)}.gfill.hold{background:var(--hold)}.gfill.block{background:var(--block)}
+.gauge i{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink);opacity:.55}
+.gscale{display:flex;justify-content:space-between;font-size:10.5px;color:var(--mute);margin-top:6px;gap:4px;flex-wrap:wrap}
+.score-n{margin-top:6px;font-size:13px;color:var(--mute)}
+.score-n b{color:var(--ink);font-variant-numeric:tabular-nums}
+.why{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:10px}
+.why li{border-top:1px solid var(--line);padding-top:9px}
+.wt{display:flex;justify-content:space-between;gap:8px;font-weight:500}
+.wd{font-size:12.5px;color:var(--mute);margin-top:1px}
+.fbar{height:4px;background:var(--chip-bg);border-radius:2px;margin-top:6px;overflow:hidden}
+.fbar span{display:block;height:100%;background:var(--accent)}
+.resp{margin-top:14px;padding:10px 12px;background:var(--sel);border-radius:8px;font-size:13px}
+.resp b{font-weight:600}
+.graphwrap{background:var(--bg);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.graphwrap svg{display:block;width:100%;height:auto}
+.ed{stroke-linecap:round;opacity:.7}
+.ed.allow{stroke:var(--allow)}.ed.stepup{stroke:var(--stepup)}.ed.hold{stroke:var(--hold)}.ed.block{stroke:var(--block)}
+.nd{stroke:var(--panel);stroke-width:1.5}
+.nd.retail{fill:var(--accent)}.nd.business{fill:var(--stepup)}.nd.merchant{fill:var(--mute)}.nd.mule{fill:var(--block)}
+.nd.fl{stroke:var(--block);stroke-width:2.5}
+.nl{font:500 10.5px "IBM Plex Sans",sans-serif;fill:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:12px;color:var(--mute);margin-top:10px}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+.sw{width:10px;height:10px;border-radius:50%;display:inline-block}
+.cases{display:grid;gap:10px}
+.case{border:1px solid var(--line);border-radius:8px;padding:10px 12px;min-width:0}
+.case.confirmed{opacity:.7}.case.cleared{opacity:.55}
+.ch{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ch b{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+.st{margin-left:auto;font:500 11px "IBM Plex Mono",monospace;text-transform:uppercase;color:var(--mute)}
+.cd{font-size:13px;margin-top:6px}
+.cm{font-size:11.5px;color:var(--mute);margin-top:4px}
+.acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.acts .btn{min-height:30px;font-size:12px;padding:5px 9px}
+.dist{display:grid;grid-template-columns:repeat(10,1fr);gap:4px;height:130px;align-items:end;border-bottom:1px solid var(--line);padding-bottom:0}
+.col{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr auto;column-gap:2px;height:100%}
+.col .pillar{display:flex;align-items:flex-end;height:100%}
+.col .ax{grid-column:1 / 3;font-size:10px;color:var(--mute);text-align:center;margin-top:4px}
+.lg,.fr{display:block;flex:1;min-height:0;border-radius:2px 2px 0 0;align-self:flex-end}
+.lg{background:var(--accent);opacity:.7}.fr{background:var(--block)}
+.legend .lg-sw{background:var(--accent)}
+.model{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mx{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.mx h3{margin:0 0 6px;font:600 13px "IBM Plex Sans",sans-serif;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+.mx div{font-size:13px;margin-top:3px}
+.mx b{font:600 16px Fraunces,Georgia,serif;font-variant-numeric:tabular-nums}
+.sliders{display:grid;gap:10px;margin-top:12px}
+.sl{display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:center;font-size:13px}
+.sl output{font-family:"IBM Plex Mono",monospace;font-size:12.5px}
+input[type=range]{width:100%;accent-color:var(--accent);min-height:24px}
+.foot{margin-top:18px;font-size:12px;color:var(--mute);max-width:90ch}
+.toast{position:fixed;left:16px;right:16px;bottom:calc(env(safe-area-inset-bottom,0px) + 16px);background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:8px;font-size:13px;max-width:520px;margin:0 auto;z-index:5;box-shadow:0 6px 24px rgba(0,0,0,.2)}
+.toast[hidden]{display:none!important}
+.row3{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:16px}
+@media (max-width:1000px){.grid{grid-template-columns:1fr}.row3{grid-template-columns:1fr 1fr}}
+@media (max-width:640px){.row3{grid-template-columns:1fr}.brand h1{font-size:26px}.model{grid-template-columns:1fr}.k-v{font-size:22px}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<main>
+<header>
+  <div class="brand">
+    <h1>Tripwire Risk Console</h1>
+    <p>Scores every payment in real time, links related accounts into networks, explains each decision, and turns flagged activity into cases. Runs on synthetic data.</p>
+  </div>
+  <div class="bar">
+    <span id="live" class="status">Live</span>
+    <span class="sub mono">Clock <span id="clock">--:--:--</span> · <span id="txn">0</span> payments</span>
+    <button class="btn" id="play">Pause</button>
+    <select id="ptype" aria-label="Pattern to inject">
+      <option value="random">Random pattern</option>
+      <option value="ato">Account takeover</option>
+      <option value="structuring">Structuring</option>
+      <option value="circular">Circular transfers</option>
+      <option value="mule">Mule network</option>
+    </select>
+    <button class="btn primary" id="inject">Inject pattern</button>
+    <button class="btn" id="reset">New book</button>
+  </div>
+</header>
+
+<section class="kpis" id="kpis" aria-label="Key metrics"></section>
+
+<section class="grid">
+  <div class="panel">
+    <div class="ph"><h2>Live payment stream</h2><span class="sub">Scored in <span id="lat">–</span>. Select a row to see why.</span></div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Time</th><th>Payment</th><th class="r">Amount</th><th>Risk</th><th>Decision</th></tr></thead>
+        <tbody id="stream"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ph"><h2>Decision explained</h2></div>
+    <div id="dec-head"></div>
+    <div id="dec-score"></div>
+    <ul class="why" id="dec-why"></ul>
+    <div class="resp"><b>Recommended response.</b> <span id="dec-action"></span> <span id="dec-case" class="sub"></span></div>
+  </div>
+</section>
+
+<section class="row3">
+  <div class="panel" style="grid-column:span 2">
+    <div class="ph"><h2>Account network</h2><span class="sub" id="g-count"></span></div>
+    <div class="graphwrap">
+      <svg id="graph" viewBox="0 0 600 400" role="img" aria-label="Network of recent payments between accounts"></svg>
+    </div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--accent)"></i>Retail</span>
+      <span><i class="sw" style="background:var(--stepup)"></i>Business</span>
+      <span><i class="sw" style="background:var(--mute)"></i>Merchant</span>
+      <span><i class="sw" style="background:var(--block)"></i>Flagged account (ring)</span>
+      <span>Edge colour = decision</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="ph"><h2>Cases</h2><span class="sub" id="case-count"></span></div>
+    <div class="cases" id="cases"></div>
+  </div>
+</section>
+
+<section class="row3">
+  <div class="panel">
+    <div class="ph"><h2>Score distribution</h2><span class="sub">Left bar: genuine. Right bar: fraud.</span></div>
+    <div class="dist" id="dist"></div>
+    <div class="sub" style="margin-top:6px">Score 0 to 100, in steps of 10.</div>
+  </div>
+
+  <div class="panel" style="grid-column:span 2">
+    <div class="ph"><h2>Model versus rules</h2><span class="sub" id="caught"></span></div>
+    <div class="model">
+      <div class="mx"><h3>Explainable model</h3><div id="mx-ours"></div></div>
+      <div class="mx"><h3>Fixed rules only</h3><div id="mx-rules"></div></div>
+    </div>
+    <div class="sliders">
+      <div class="sl"><label for="sStepUp">Step-up threshold</label><output id="vStepUp"></output><input id="sStepUp" type="range" min="10" max="80" step="1"></div>
+      <div class="sl"><label for="sHold">Hold threshold</label><output id="vHold"></output><input id="sHold" type="range" min="20" max="95" step="1"></div>
+      <div class="sl"><label for="sBlock">Block threshold</label><output id="vBlock"></output><input id="sBlock" type="range" min="30" max="99" step="1"></div>
+    </div>
+    <p class="sub" style="margin:10px 0 0">Raise a threshold to reduce friction on genuine customers. Lower it to catch more. Confirmed and cleared cases adjust factor weights.</p>
+  </div>
+</section>
+
+<p class="foot">Prototype. All customers, accounts, devices and payments are synthetic. The thresholds, rule baseline and scoring weights are illustrative, and a production system would train them on labelled bank data and add a regulatory review step before any account action.</p>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script>
+/* Tripwire engine: synthetic payments, risk scoring, AML pattern detection, cases. */
+const Engine = (function () {
+  'use strict';
+
+  const REPORT_T = 100000; // demo reporting limit, INR
+  const CITIES = {
+    Mumbai: [19.08, 72.88], Delhi: [28.61, 77.21], Bengaluru: [12.97, 77.59], Chennai: [13.08, 80.27],
+    Hyderabad: [17.39, 78.49], Kolkata: [22.57, 88.36], Pune: [18.52, 73.86], Ahmedabad: [23.02, 72.57],
+    Dubai: [25.2, 55.27], Singapore: [1.35, 103.82]
+  };
+  const HOME = ['Mumbai', 'Delhi', 'Bengaluru', 'Chennai', 'Hyderabad', 'Kolkata', 'Pune', 'Ahmedabad'];
+  const FIRST = ['Aarav', 'Priya', 'Rohan', 'Ananya', 'Vikram', 'Meera', 'Karthik', 'Divya', 'Arjun', 'Sneha', 'Rahul', 'Kavya', 'Imran', 'Pooja', 'Siddharth', 'Lakshmi', 'Nikhil', 'Farah', 'Manoj', 'Deepa'];
+  const LAST = ['Iyer', 'Sharma', 'Nair', 'Reddy', 'Gupta', 'Menon', 'Patel', 'Das', 'Khan', 'Rao', 'Joshi', 'Pillai', 'Singh', 'Verma', 'Bose', 'Naidu', 'Kulkarni', 'Shah', 'Mishra', 'Ghosh'];
+  const MERCH = ['Spice Route Cafe', 'MetroMart Grocers', 'Tamarind Electronics', 'Lotus Pharmacy', 'QuickFuel Station', 'Bharat Bookstore', 'Saffron Sweets', 'UrbanCab Rides', 'Kaveri Fashions', 'FreshBasket Online', 'Sunrise Telecom', 'Anand Hardware'];
+  const BIZ = ['Kaveri Textiles Pvt Ltd', 'Orion Traders', 'Mahalakshmi Exports', 'Deccan Auto Parts', 'Blue Lotus Logistics', 'Shree Agro Foods'];
+  const PATTERN_NAME = { ato: 'Account takeover', structuring: 'Structuring', circular: 'Circular transfers', mule: 'Mule network', anomaly: 'Anomalous transfer' };
+  const ACTIONS = {
+    ato: 'Freeze outgoing payments, call the customer on their registered number, force a credential reset.',
+    structuring: 'Escalate to the AML desk, aggregate the payments and prepare a suspicious transaction report.',
+    circular: 'Hold every leg of the loop, flag the ring accounts and prepare a suspicious transaction report.',
+    mule: 'Freeze the receiving account, trace onward transfers and notify the beneficiary banks.',
+    anomaly: 'Review with the customer and confirm the payment purpose before release.'
+  };
+  const FACTORS = {
+    amount: 'Unusual amount', device: 'New device', geo: 'Location jump', velocity: 'Payment velocity',
+    payee: 'New payee', age: 'Young payee account', drain: 'Balance drain', near: 'Just under reporting limit',
+    fanin: 'Many senders, one payee', pass: 'Pass-through of funds', cycle: 'Money returns to origin',
+    linked: 'Linked to flagged account', combo: 'Device, place and payee all new'
+  };
+  const BIAS = -4.6;
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const fmt = n => Math.round(n).toLocaleString('en-IN');
+  function hav(a, b) {
+    const r = Math.PI / 180, dLat = (b[0] - a[0]) * r, dLon = (b[1] - a[1]) * r;
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLon / 2) ** 2;
+    return 12742 * Math.asin(Math.sqrt(x));
+  }
+  function fmtDur(s) {
+    if (s < 90) return Math.round(s) + ' s';
+    if (s < 5400) return Math.round(s / 60) + ' min';
+    return (s / 3600).toFixed(1) + ' h';
+  }
+  function fmtClock(t) {
+    const s = Math.floor(t) % 86400, h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    return [h, m, x].map(v => String(v).padStart(2, '0')).join(':');
+  }
+  function median(a) {
+    if (!a.length) return null;
+    const b = a.slice().sort((x, y) => x - y), m = b.length >> 1;
+    return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2;
+  }
+  function pctile(a, p) {
+    if (!a.length) return null;
+    const b = a.slice().sort((x, y) => x - y);
+    return b[Math.min(b.length - 1, Math.floor(p * b.length))];
+  }
+
+  function create(seed) {
+    const rnd = mulberry32(seed == null ? 7 : seed);
+    const R = () => rnd();
+    const pick = a => a[Math.floor(R() * a.length)];
+    const randn = () => { let u = 0; while (u === 0) u = R(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * R()); };
+    const hex = () => Math.floor(R() * 65536).toString(16).padStart(4, '0').toUpperCase();
+
+    const accounts = {}, retail = [], merchants = [], biz = [], mules = [];
+    let idn = 1000;
+    function mk(kind, name, o) {
+      const a = Object.assign({
+        id: 'AC-' + (++idn), name, kind, loc: pick(HOME), age: 900, bal: 50000, base: Math.log(2000),
+        v: 0.36, mu: 0, dev: new Set(), ben: new Set(), lastT: -1e9, out: [], in: []
+      }, o);
+      a.mu = a.base;
+      a.dev.add('D-' + hex());
+      if (R() < 0.3) a.dev.add('D-' + hex());
+      accounts[a.id] = a;
+      return a;
+    }
+    const usedNames = new Set();
+    function person() {
+      let n; do { n = pick(FIRST) + ' ' + pick(LAST); } while (usedNames.has(n));
+      usedNames.add(n); return n;
+    }
+    for (let i = 0; i < 140; i++) {
+      const fresh = R() < 0.1;
+      retail.push(mk('retail', person(), {
+        age: fresh ? 5 + Math.floor(R() * 24) : 200 + Math.floor(R() * 2800),
+        bal: 20000 + R() * 320000, base: 7.6 + 0.7 * randn()
+      }));
+    }
+    MERCH.forEach(n => merchants.push(mk('merchant', n, { age: 1200 + Math.floor(R() * 2000), bal: 1e6 })));
+    BIZ.forEach(n => biz.push(mk('business', n, { age: 1500 + Math.floor(R() * 3000), bal: 2.5e6 + R() * 3e6, base: Math.log(42000) })));
+    for (let i = 0; i < 16; i++) {
+      const m = mk('mule', person(), { age: 3 + Math.floor(R() * 20), bal: 6000, base: Math.log(4000) });
+      m.v = 1; mules.push(m);
+    }
+    retail.concat(biz).forEach(a => {
+      const k = 3 + Math.floor(R() * 3);
+      for (let i = 0; i < k; i++) { const b = R() < 0.35 ? pick(merchants) : pick(retail); if (b !== a) a.ben.add(b.id); }
+    });
+
+    const W = {}; Object.keys(FACTORS).forEach(k => W[k] = 1);
+    const thresholds = { stepUp: 35, hold: 60, block: 85 };
+    const watch = new Set(), frozen = new Set();
+    let clock = 9 * 3600, txCount = 0, pending = [], nextInject = 70, patternN = 0;
+    const log = [], edgesLog = [], caseMap = {}, caseOfAcc = {};
+    let caseN = 0;
+    let M;
+    function freshMetrics() {
+      M = {
+        ours: { tp: 0, fp: 0, fn: 0, tn: 0 }, rules: { tp: 0, fp: 0, fn: 0, tn: 0 },
+        legit: 0, fraud: 0, hardFp: 0, valFraud: 0, valStopped: 0, valRules: 0,
+        lat: [], patterns: {}, actions: { allow: 0, stepup: 0, hold: 0, block: 0 },
+        scores: { legit: [], fraud: [] }
+      };
+    }
+    freshMetrics();
+
+    function recent(arr, win, now) {
+      const out = [];
+      for (let i = arr.length - 1; i >= 0; i--) { if (arr[i].t < now - win) break; out.push(arr[i]); }
+      return out;
+    }
+    function findPath(from, target, depth, seen, now) {
+      if (depth === 0) return 0;
+      for (const e of recent(accounts[from].out, 1800, now)) {
+        if (e.to === target) return 1;
+        if (!seen.has(e.to)) {
+          seen.add(e.to);
+          const r = findPath(e.to, target, depth - 1, seen, now);
+          if (r) return r + 1;
+        }
+      }
+      return 0;
+    }
+
+    function scoreTx(tx) {
+      const S = accounts[tx.from], D = accounts[tx.to], now = tx.t, f = [];
+      const add = (key, pts, detail) => { if (pts > 0.05) f.push({ key, label: FACTORS[key], points: pts * W[key], detail }); };
+      const sd = Math.max(Math.sqrt(S.v), 0.5), z = (Math.log(tx.amt) - S.mu) / sd;
+      add('amount', clamp((z - 1.5) * 0.9, 0, 3), '₹' + fmt(tx.amt) + ' is ' + (tx.amt / Math.exp(S.mu)).toFixed(1) + 'x this customer\'s typical payment');
+      const newDev = !S.dev.has(tx.device);
+      if (newDev) add('device', 1.4, 'Device ' + tx.device + ' has not been seen on this account');
+      let newLoc = false;
+      if (tx.city !== S.loc) {
+        newLoc = true;
+        const km = hav(CITIES[S.loc], CITIES[tx.city]), gap = now - S.lastT, speed = km / Math.max(gap / 3600, 1 / 120);
+        if (speed > 800) add('geo', 2.0, S.loc + ' to ' + tx.city + ' (' + fmt(km) + ' km) in ' + fmtDur(gap));
+        else add('geo', 0.5, 'Payment made from ' + tx.city + ', usually ' + S.loc);
+      }
+      const out10 = recent(S.out, 600, now).length + 1;
+      add('velocity', clamp((out10 - 2) * 0.5, 0, 2), out10 + ' payments from this account in 10 minutes');
+      const newPayee = !S.ben.has(tx.to);
+      if (newPayee) {
+        add('payee', 0.6, 'First payment to ' + D.name);
+        if (D.age < 30) add('age', 0.9, 'Payee account is only ' + D.age + ' days old');
+      }
+      const ratio = tx.amt / Math.max(S.bal, 1);
+      if (ratio > 0.5) add('drain', ratio > 0.8 ? 1.6 : 1.0, 'Moves ' + Math.round(Math.min(ratio, 1) * 100) + '% of the available balance');
+      if (tx.amt >= 0.88 * REPORT_T && tx.amt < REPORT_T) {
+        const prev = recent(S.out, 3600, now).filter(e => e.amt >= 0.88 * REPORT_T && e.amt < REPORT_T).length;
+        add('near', 0.9 + 0.7 * Math.min(prev, 4), '₹' + fmt(tx.amt) + ' sits just under the ₹1,00,000 limit' + (prev ? ', ' + prev + ' similar in the last hour' : ''));
+      }
+      const senders = new Set(recent(D.in, 1800, now).map(e => e.from)); senders.add(tx.from);
+      if (senders.size >= 3) add('fanin', clamp((senders.size - 2) * 0.7, 0, 2.4) * (D.kind === 'merchant' ? 0.1 : 1), senders.size + ' different senders paid ' + D.name + ' in 30 minutes');
+      const ins = recent(S.in, 900, now), inbound = ins.reduce((s, e) => s + e.amt, 0);
+      if (inbound >= 5000) {
+        const fwd = tx.amt + recent(S.out, 900, now).reduce((s, e) => s + e.amt, 0), rr = fwd / inbound;
+        if (rr >= 0.8) add('pass', 2.2 + (ins.length >= 3 ? 0.5 : 0), 'Forwards ' + Math.round(Math.min(rr, 1) * 100) + '% of funds received ' + fmtDur(now - ins[0].t) + ' ago');
+      }
+      const hops = findPath(D.id, S.id, 4, new Set([D.id]), now);
+      if (hops) add('cycle', 3.2, 'Funds return to ' + S.name + ' after ' + (hops + 1) + ' payments');
+      if (watch.has(S.id) || (watch.has(D.id) && D.kind !== 'merchant')) add('linked', 1.6, (watch.has(S.id) ? S.name : D.name) + ' is already under watch');
+      if (newDev && newLoc && newPayee) add('combo', 1.2, 'Three first-time signals on one payment');
+      f.sort((a, b) => b.points - a.points);
+      const sum = f.reduce((s, x) => s + x.points, 0);
+      return { score: 100 / (1 + Math.exp(-(BIAS + sum))), factors: f, newDev, newLoc, newPayee, out10 };
+    }
+
+    function decide(score, tx) {
+      if (frozen.has(tx.from) || frozen.has(tx.to)) return 'block';
+      if (score >= thresholds.block) return 'block';
+      if (score >= thresholds.hold) return 'hold';
+      if (score >= thresholds.stepUp) return 'stepup';
+      return 'allow';
+    }
+
+    function caseKind(c) {
+      const t = c.tally;
+      if (t.cycle) return 'circular';
+      if ((t.near || 0) >= 1.5) return 'structuring';
+      if (t.device && (t.geo || t.combo)) return 'ato';
+      if (t.pass || t.fanin) return 'mule';
+      return 'anomaly';
+    }
+    function upsertCase(tx) {
+      const a = caseOfAcc[tx.from], b = caseOfAcc[tx.to];
+      let c;
+      if (!a && !b) {
+        c = { id: 'CASE-' + String(++caseN).padStart(3, '0'), accounts: new Set(), txs: [], value: 0, maxScore: 0, tally: {}, status: 'open', openedAt: tx.t, updatedAt: tx.t };
+        caseMap[c.id] = c;
+      } else if (a && b && a !== b) {
+        c = caseMap[a]; const o = caseMap[b];
+        o.accounts.forEach(x => { c.accounts.add(x); caseOfAcc[x] = c.id; });
+        c.txs.push(...o.txs); c.value += o.value; c.maxScore = Math.max(c.maxScore, o.maxScore);
+        Object.keys(o.tally).forEach(k => c.tally[k] = (c.tally[k] || 0) + o.tally[k]);
+        c.openedAt = Math.min(c.openedAt, o.openedAt);
+        delete caseMap[o.id];
+      } else c = caseMap[a || b];
+      c.accounts.add(tx.from); c.accounts.add(tx.to);
+      caseOfAcc[tx.from] = c.id; caseOfAcc[tx.to] = c.id;
+      c.txs.push(tx.id); c.value += tx.amt; c.maxScore = Math.max(c.maxScore, tx.score); c.updatedAt = tx.t;
+      tx.factors.forEach(x => c.tally[x.key] = (c.tally[x.key] || 0) + x.points);
+      if (c.status === 'cleared') c.status = 'open';
+      c.kind = caseKind(c);
+    }
+
+    function track(tx) {
+      const dec = tx.decision, alert = dec !== 'allow', base = tx.baseFlag, o = M.ours, r = M.rules;
+      M.actions[dec]++;
+      if (tx.fraud) {
+        M.fraud++; M.valFraud += tx.amt; M.scores.fraud.push(tx.score);
+        alert ? o.tp++ : o.fn++; base ? r.tp++ : r.fn++;
+        if (dec === 'hold' || dec === 'block') M.valStopped += tx.amt;
+        if (base) M.valRules += tx.amt;
+        const p = M.patterns[tx.pid] || (M.patterns[tx.pid] = { type: tx.ptype, first: tx.t, det: null, bdet: null });
+        if (alert && p.det == null) p.det = tx.t;
+        if (base && p.bdet == null) p.bdet = tx.t;
+      } else {
+        M.legit++; M.scores.legit.push(tx.score);
+        alert ? o.fp++ : o.tn++; base ? r.fp++ : r.tn++;
+        if (dec === 'hold' || dec === 'block') M.hardFp++;
+      }
+      if (M.scores.legit.length > 6000) M.scores.legit.shift();
+    }
+
+    function process(tx) {
+      const t0 = (typeof performance !== 'undefined' ? performance : Date).now();
+      const S = accounts[tx.from], D = accounts[tx.to];
+      const r = scoreTx(tx);
+      tx.score = r.score; tx.factors = r.factors; tx.decision = decide(r.score, tx);
+      tx.frozen = frozen.has(tx.from) || frozen.has(tx.to);
+      M.lat.push((typeof performance !== 'undefined' ? performance : Date).now() - t0);
+      if (M.lat.length > 3000) M.lat.shift();
+      tx.baseFlag = tx.amt >= 50000 || r.out10 >= 5 || (r.newDev && tx.amt >= 20000);
+      tx.fromName = S.name; tx.toName = D.name; tx.fromAge = S.age; tx.toAge = D.age;
+      tx.fromKind = S.kind; tx.toKind = D.kind;
+      tx.num = ++txCount;
+      track(tx);
+      const settled = tx.decision === 'allow' || tx.decision === 'stepup';
+      if (S.bal < tx.amt * 1.2) S.bal += tx.amt * 2 + 20000;
+      S.out.push({ t: tx.t, to: tx.to, amt: tx.amt }); D.in.push({ t: tx.t, from: tx.from, amt: tx.amt });
+      if (S.out.length > 60) S.out.shift();
+      if (D.in.length > 80) D.in.shift();
+      if (settled) {
+        S.bal -= tx.amt; D.bal += tx.amt;
+        S.ben.add(tx.to); S.dev.add(tx.device); S.loc = tx.city; S.lastT = tx.t;
+        if (tx.decision === 'allow') {
+          const lx = Math.log(tx.amt), d = lx - S.mu;
+          S.mu += 0.1 * d; S.v = 0.9 * S.v + 0.1 * d * d;
+        }
+      } else if (tx.decision === 'hold' || tx.decision === 'block') {
+        if (S.kind !== 'merchant') watch.add(S.id);
+        if (D.kind !== 'merchant') watch.add(D.id);
+        upsertCase(tx);
+      }
+      log.push(tx); if (log.length > 400) log.shift();
+      edgesLog.push({ from: tx.from, to: tx.to, amt: tx.amt, decision: tx.decision, score: tx.score, t: tx.t });
+      if (edgesLog.length > 260) edgesLog.shift();
+    }
+
+    function chan(amt, to) {
+      if (accounts[to].kind === 'merchant') return R() < 0.6 ? 'UPI' : 'Card';
+      if (amt > 200000) return 'NEFT';
+      return R() < 0.65 ? 'UPI' : 'IMPS';
+    }
+    function mkTx(from, to, amt, o) {
+      const S = accounts[from];
+      return Object.assign({
+        id: 'TX-' + String(txCount + pending.length + 1 + Math.floor(R() * 0)).padStart(6, '0') + hex().slice(0, 1),
+        t: clock, from, to, amt: Math.round(amt), channel: chan(amt, to),
+        device: pick([...S.dev]), city: S.loc, fraud: false, pid: null, ptype: null
+      }, o || {});
+    }
+
+    function genLegit() {
+      const s = R() < 0.05 ? pick(biz) : pick(retail);
+      const q = R();
+      let d;
+      if (q < 0.6 && s.ben.size) d = accounts[pick([...s.ben])];
+      else if (q < 0.88) d = pick(merchants);
+      else { do { d = pick(retail); } while (d === s); }
+      let amt = Math.exp(s.base + 0.55 * randn()), o = {};
+      const ev = R();
+      if (ev < 0.015) { amt *= 12 + R() * 30; d = pick(merchants); }
+      else if (ev < 0.04) o.device = 'D-' + hex();
+      else if (ev < 0.055) { o.city = pick(HOME.filter(c => c !== s.loc)); s.lastT = clock - 7 * 3600; }
+      else if (ev < 0.065) {
+        for (let i = 1; i <= 2 + Math.floor(R() * 2); i++) {
+          const m = pick(merchants);
+          pending.push({ at: clock + i * (12 + R() * 25), tx: mkTx(s.id, m.id, Math.exp(s.base + 0.4 * randn()) * 0.7) });
+        }
+        pending.sort((a, b) => a.at - b.at);
+      }
+      return mkTx(s.id, d.id, clamp(amt, 100, 600000), o);
+    }
+
+    function enqueue(list) { list.forEach(x => pending.push(x)); pending.sort((a, b) => a.at - b.at); }
+    function inject(type) {
+      type = type || pick(['ato', 'structuring', 'circular', 'mule']);
+      const pid = 'P' + (++patternN), meta = { fraud: true, pid, ptype: type }, items = [];
+      let at = clock + 5;
+      const step = (lo, hi) => { at += lo + R() * (hi - lo); return at; };
+      const mk2 = (a, b, amt, o) => ({ at: step(...(o && o.gap || [20, 50])), tx: mkTx(a.id, b.id, amt, Object.assign({}, meta, o && o.tx || {})) });
+      if (type === 'ato') {
+        const v = pick(retail.filter(a => a.age > 200 && a.bal > 60000)), m1 = pick(mules), m2 = pick(mules.filter(x => x !== m1)), m3 = pick(mules.filter(x => x !== m1 && x !== m2));
+        v.lastT = clock - 120;
+        const city = pick(['Dubai', 'Singapore']), dev = 'D-' + hex();
+        items.push(mk2(v, m1, v.bal * 0.45, { gap: [3, 8], tx: { device: dev, city, channel: 'IMPS' } }));
+        items.push(mk2(v, m2, v.bal * 0.3, { gap: [20, 40], tx: { device: dev, city, channel: 'IMPS' } }));
+        items.push(mk2(m1, m3, v.bal * 0.4, { gap: [40, 80] }));
+      } else if (type === 'structuring') {
+        const s = pick(biz), recips = [pick(mules), pick(mules), pick(mules)], n = 5 + Math.floor(R() * 3);
+        for (let i = 0; i < n; i++) items.push(mk2(s, recips[i % 3], REPORT_T * (0.9 + 0.09 * R()), { gap: [30, 80], tx: { channel: 'NEFT' } }));
+      } else if (type === 'circular') {
+        const size = 4 + Math.floor(R() * 2), ring = [];
+        while (ring.length < size) { const m = pick(mules); if (!ring.includes(m)) ring.push(m); }
+        ring[0].bal = 250000;
+        let amt = 80000 + R() * 15000;
+        for (let i = 0; i < size; i++) {
+          items.push(mk2(ring[i], ring[(i + 1) % size], amt, { gap: [20, 55], tx: { channel: 'IMPS' } }));
+          amt *= 0.97 + R() * 0.02;
+        }
+      } else {
+        const m = pick(mules), m2 = pick(mules.filter(x => x !== m)), m3 = pick(mules.filter(x => x !== m && x !== m2));
+        const n = 6 + Math.floor(R() * 3), vs = [];
+        while (vs.length < n) { const v = pick(retail); if (!vs.includes(v)) vs.push(v); }
+        let total = 0;
+        vs.forEach(v => { const a = 6000 + R() * 16000; total += a; v.bal = Math.max(v.bal, a * 3); items.push(mk2(v, m, a, { gap: [12, 30], tx: { channel: 'UPI' } })); });
+        items.push(mk2(m, m2, total * 0.6, { gap: [30, 50], tx: { channel: 'IMPS' } }));
+        items.push(mk2(m, m3, total * 0.32, { gap: [25, 45], tx: { channel: 'IMPS' } }));
+      }
+      enqueue(items);
+      return pid;
+    }
+
+    const api = {
+      auto: true, thresholds, W,
+      get clock() { return clock; },
+      get count() { return txCount; },
+      tick() {
+        clock += 6 + R() * 18;
+        if (api.auto && --nextInject <= 0) { inject(); nextInject = 100 + Math.floor(R() * 80); }
+        let tx;
+        if (pending.length && pending[0].at <= clock) { tx = pending.shift().tx; tx.t = clock; }
+        else tx = genLegit();
+        process(tx);
+        return tx;
+      },
+      inject,
+      warm(n) {
+        const a = api.auto; api.auto = false;
+        for (let i = 0; i < n; i++) api.tick();
+        api.auto = a; freshMetrics(); log.length = 0; edgesLog.length = 0;
+        Object.keys(caseMap).forEach(k => delete caseMap[k]); Object.keys(caseOfAcc).forEach(k => delete caseOfAcc[k]);
+        watch.clear(); frozen.clear(); caseN = 0; txCount = 0;
+      },
+      recent(n) { return log.slice(-n).reverse(); },
+      txById(id) { return log.find(t => t.id === id) || null; },
+      edges(n) { return edgesLog.slice(-n); },
+      acc(id) { return accounts[id]; },
+      caseOf(id) { return caseOfAcc[id] || null; },
+      isWatched(id) { return watch.has(id); },
+      cases() {
+        return Object.values(caseMap).map(c => ({
+          id: c.id, status: c.status, kind: c.kind, label: PATTERN_NAME[c.kind], action: ACTIONS[c.kind],
+          accounts: [...c.accounts], txCount: c.txs.length, value: c.value, maxScore: c.maxScore, openedAt: c.openedAt, updatedAt: c.updatedAt
+        })).sort((a, b) => (a.status === 'open' ? 0 : 1) - (b.status === 'open' ? 0 : 1) || b.maxScore - a.maxScore || b.updatedAt - a.updatedAt);
+      },
+      confirm(id) {
+        const c = caseMap[id]; if (!c) return '';
+        c.status = 'confirmed'; c.accounts.forEach(a => frozen.add(a));
+        Object.keys(c.tally).forEach(k => { W[k] = Math.min(1.3, W[k] * 1.03); });
+        return c.accounts.size + ' accounts frozen. Future payments to or from them are blocked.';
+      },
+      clear(id) {
+        const c = caseMap[id]; if (!c) return '';
+        c.status = 'cleared';
+        const top = Object.keys(c.tally).sort((a, b) => c.tally[b] - c.tally[a]).slice(0, 2);
+        top.forEach(k => { W[k] = Math.max(0.6, W[k] * 0.93); });
+        c.accounts.forEach(a => { watch.delete(a); frozen.delete(a); });
+        return 'Marked legitimate. The model now weighs "' + top.map(k => FACTORS[k].toLowerCase()).join('" and "') + '" a little less.';
+      },
+      escalate(id) {
+        const c = caseMap[id]; if (!c) return '';
+        c.status = 'escalated'; return 'Sent to the AML desk with a suspicious transaction report draft.';
+      },
+      stats() {
+        const o = M.ours, r = M.rules, d = (a, b) => (a + b) ? a / (a + b) : null;
+        const lat = [], base = [];
+        let caught = 0, total = 0, bcaught = 0;
+        Object.values(M.patterns).forEach(p => {
+          total++;
+          if (p.det != null) { caught++; lat.push(p.det - p.first); }
+          if (p.bdet != null) { bcaught++; base.push(p.bdet - p.first); }
+        });
+        return {
+          scored: M.legit + M.fraud, fraud: M.fraud, legit: M.legit,
+          precision: d(o.tp, o.fp), recall: d(o.tp, o.fn), fpr: d(o.fp, o.tn),
+          rPrecision: d(r.tp, r.fp), rRecall: d(r.tp, r.fn), rFpr: d(r.fp, r.tn),
+          hardFpr: M.legit ? M.hardFp / M.legit : null,
+          ttd: median(lat), rTtd: median(base), caught, total, bcaught,
+          stopped: M.valFraud ? M.valStopped / M.valFraud : null, rStopped: M.valFraud ? M.valRules / M.valFraud : null,
+          valFraud: M.valFraud, valStopped: M.valStopped,
+          latP50: median(M.lat), latP95: pctile(M.lat, 0.95), actions: Object.assign({}, M.actions),
+          scores: M.scores, cases: Object.keys(caseMap).length, watched: watch.size
+        };
+      }
+    };
+    return api;
+  }
+
+  return { create, fmt, fmtDur, fmtClock, PATTERN_NAME, FACTORS, REPORT_T };
+})();
+if (typeof module !== 'undefined') module.exports = Engine;
+
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const DEC = {
+    allow: { label: 'Released', cls: 'allow', action: 'Released. The customer sees no friction.' },
+    stepup: { label: 'Step-up', cls: 'stepup', action: 'Ask for in-app confirmation before release. Most genuine customers pass in seconds.' },
+    hold: { label: 'Held', cls: 'hold', action: 'Held for review and a case opened. The customer is contacted before any money moves.' },
+    block: { label: 'Blocked', cls: 'block', action: 'Blocked. Both accounts are on watch and linked accounts are checked.' }
+  };
+  const KIND = { retail: 'Retail', merchant: 'Merchant', business: 'Business', mule: 'Flagged' };
+  const LIMITS = { min: 20000 };
+
+  let eng = Engine.create(7);
+  eng.warm(420);
+  let running = true, selId = null, tickN = 0, timer = null, feedN = 0;
+  const feed = [];
+
+  function pct(x, d) { return x == null ? '–' : (x * 100).toFixed(d == null ? 1 : d) + '%'; }
+  function inr(n) { return '₹' + Engine.fmt(n); }
+
+  function renderKpis() {
+    const s = eng.stats();
+    const cards = [
+      ['Precision', pct(s.precision), 'of alerts were real fraud', pct(s.rPrecision) + ' rules'],
+      ['Recall', pct(s.recall), 'of fraud was caught', pct(s.rRecall) + ' rules'],
+      ['False-positive rate', pct(s.fpr, 2), 'of genuine payments flagged', pct(s.rFpr, 2) + ' rules'],
+      ['Median detection', s.ttd == null ? '–' : Engine.fmtDur(s.ttd), 'from first step of a pattern', s.rTtd == null ? 'rules: none' : 'rules: ' + Engine.fmtDur(s.rTtd)],
+      ['Fraud value stopped', pct(s.stopped, 0), inr(s.valStopped) + ' of ' + inr(s.valFraud), 'rules: ' + pct(s.rStopped, 0)],
+      ['Customer friction', pct(s.hardFpr, 2), 'genuine payments held or blocked', 'step-ups: ' + pct(s.legit ? (s.actions.stepup / Math.max(s.scored, 1)) : null, 1)]
+    ];
+    $('kpis').innerHTML = cards.map(c => '<div class="kpi"><div class="k-l">' + c[0] + '</div><div class="k-v">' + c[1] + '</div><div class="k-s">' + c[2] + '</div><div class="k-r">' + c[3] + '</div></div>').join('');
+    $('lat').textContent = s.latP50 == null ? '–' : s.latP50.toFixed(2) + ' ms';
+  }
+
+  function renderStream() {
+    const rows = eng.recent(16);
+    $('stream').innerHTML = rows.map(t => {
+      const d = DEC[t.decision];
+      return '<tr data-id="' + t.id + '" class="' + (t.id === selId ? 'sel' : '') + '">' +
+        '<td class="mono dim">' + Engine.fmtClock(t.t) + '</td>' +
+        '<td><div class="pair">' + esc(t.fromName) + '<span class="arrow">→</span>' + esc(t.toName) + '</div><div class="sub">' + t.channel + ' · ' + t.city + '</div></td>' +
+        '<td class="mono r">' + inr(t.amt) + '</td>' +
+        '<td><div class="meter"><span style="width:' + Math.round(t.score) + '%"></span></div><div class="mono sub">' + t.score.toFixed(0) + '</div></td>' +
+        '<td><span class="chip ' + d.cls + '">' + d.label + '</span></td></tr>';
+    }).join('');
+  }
+
+  function renderDecision() {
+    const t = (selId && eng.txById(selId)) || eng.recent(1)[0];
+    if (!t) return;
+    const d = DEC[t.decision];
+    $('dec-head').innerHTML = '<div class="dh-top"><span class="chip ' + d.cls + ' big">' + d.label + '</span><span class="mono sub">' + t.id + ' · ' + Engine.fmtClock(t.t) + '</span></div>' +
+      '<div class="dh-amt">' + inr(t.amt) + '</div>' +
+      '<div class="pair big2">' + esc(t.fromName) + ' <span class="arrow">→</span> ' + esc(t.toName) + '</div>' +
+      '<div class="sub">' + esc(t.channel) + ' · from ' + esc(t.city) + ' · device ' + esc(t.device) + '</div>';
+    const sc = t.score;
+    $('dec-score').innerHTML = '<div class="gauge"><div class="gfill ' + d.cls + '" style="width:' + sc.toFixed(1) + '%"></div>' +
+      '<i style="left:' + eng.thresholds.stepUp + '%"></i><i style="left:' + eng.thresholds.hold + '%"></i><i style="left:' + eng.thresholds.block + '%"></i></div>' +
+      '<div class="gscale mono"><span>0</span><span>step-up ' + eng.thresholds.stepUp + '</span><span>hold ' + eng.thresholds.hold + '</span><span>block ' + eng.thresholds.block + '</span><span>100</span></div>' +
+      '<div class="score-n">Risk score <b>' + sc.toFixed(1) + '</b> / 100</div>';
+    const f = t.factors;
+    const total = f.reduce((s, x) => s + x.points, 0);
+    $('dec-why').innerHTML = f.length ? f.slice(0, 7).map(x =>
+      '<li><div class="wt"><span>' + esc(x.label) + '</span><span class="mono">+' + x.points.toFixed(1) + '</span></div>' +
+      '<div class="wd">' + esc(x.detail) + '</div><div class="fbar"><span style="width:' + Math.min(100, x.points / Math.max(total, 0.1) * 100).toFixed(0) + '%"></span></div></li>').join('')
+      : '<li class="empty">No risk signals. Payment matches this customer\'s normal behaviour.</li>';
+    $('dec-action').textContent = d.action;
+    const c = eng.caseOf(t.from) || eng.caseOf(t.to);
+    $('dec-case').textContent = c ? 'Part of ' + c + '.' : 'Not linked to a case.';
+  }
+
+  function renderGraph() {
+    const E = eng.edges(140);
+    const nodes = new Map();
+    E.forEach(e => { nodes.set(e.from, (nodes.get(e.from) || 0) + 1); nodes.set(e.to, (nodes.get(e.to) || 0) + 1); });
+    const ids = [...nodes.keys()].sort((a, b) => a.localeCompare(b));
+    const cx = 300, cy = 200, R = 150, pos = {};
+    ids.forEach((id, i) => {
+      const a = -Math.PI / 2 + i / ids.length * Math.PI * 2;
+      pos[id] = [cx + R * Math.cos(a), cy + R * Math.sin(a), a];
+    });
+    let svg = '';
+    E.forEach(e => {
+      const p = pos[e.from], q = pos[e.to]; if (!p || !q) return;
+      const w = Math.min(4, 0.6 + Math.log10(Math.max(e.amt, 10)) * 0.5);
+      svg += '<line x1="' + p[0].toFixed(1) + '" y1="' + p[1].toFixed(1) + '" x2="' + q[0].toFixed(1) + '" y2="' + q[1].toFixed(1) + '" class="ed ' + e.decision + '" stroke-width="' + w.toFixed(2) + '"/>';
+    });
+    ids.forEach(id => {
+      const a = eng.acc(id), p = pos[id], flagged = eng.isWatched(id) || eng.caseOf(id);
+      const right = Math.cos(p[2]) >= 0;
+      const lx = cx + (R + 18) * Math.cos(p[2]), ly = cy + (R + 18) * Math.sin(p[2]);
+      const nm = a.name.length > 15 ? a.name.slice(0, 14) + '…' : a.name;
+      svg += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="' + (flagged ? 6.5 : 4.5) + '" class="nd ' + a.kind + (flagged ? ' fl' : '') + '"/>' +
+        '<text x="' + lx.toFixed(1) + '" y="' + (ly + 3.5).toFixed(1) + '" text-anchor="' + (right ? 'start' : 'end') + '" class="nl">' + esc(nm) + '</text>';
+    });
+    $('graph').innerHTML = svg || '<text x="300" y="200" text-anchor="middle" class="nl">Waiting for payments…</text>';
+    $('g-count').textContent = ids.length + ' accounts · ' + E.length + ' payments';
+  }
+
+  function renderCases() {
+    const cs = eng.cases();
+    $('case-count').textContent = cs.filter(c => c.status === 'open').length + ' open';
+    if (!cs.length) { $('cases').innerHTML = '<div class="empty">No cases yet. Held or blocked payments open a case automatically.</div>'; return; }
+    $('cases').innerHTML = cs.slice(0, 8).map(c =>
+      '<div class="case ' + c.status + '"><div class="ch"><b>' + c.id + '</b><span class="chip ' + (c.maxScore >= eng.thresholds.block ? 'block' : 'hold') + '">' + c.label + '</span><span class="st">' + c.status + '</span></div>' +
+      '<div class="cd">' + esc(c.action) + '</div>' +
+      '<div class="cm mono">' + c.accounts.length + ' accounts · ' + c.txCount + ' payments · ' + inr(c.value) + ' · peak ' + c.maxScore.toFixed(0) + '</div>' +
+      (c.status === 'open' || c.status === 'escalated' ? '<div class="acts"><button data-act="confirm" data-id="' + c.id + '" class="btn danger">Confirm and freeze</button><button data-act="escalate" data-id="' + c.id + '" class="btn">Escalate to AML</button><button data-act="clear" data-id="' + c.id + '" class="btn ghost">Mark legitimate</button></div>' : '<div class="sub">' + (c.status === 'confirmed' ? 'Accounts frozen. Model weights updated.' : 'Cleared. Model weights adjusted.') + '</div>') +
+      '</div>').join('');
+  }
+
+  function renderDist() {
+    const s = eng.stats(), B = 10;
+    const L = new Array(B).fill(0), F = new Array(B).fill(0);
+    s.scores.legit.forEach(v => L[Math.min(B - 1, Math.floor(v / 10))]++);
+    s.scores.fraud.forEach(v => F[Math.min(B - 1, Math.floor(v / 10))]++);
+    const mL = Math.max(1, ...L), mF = Math.max(1, ...F);
+    let h = '';
+    for (let i = 0; i < B; i++) {
+      h += '<div class="col"><div class="pillar"><span class="lg" style="height:' + (L[i] / mL * 100).toFixed(1) + '%"></span></div><div class="pillar"><span class="fr" style="height:' + (F[i] / mF * 100).toFixed(1) + '%"></span></div><div class="ax mono">' + (i * 10) + '</div></div>';
+    }
+    $('dist').innerHTML = h;
+  }
+
+  function renderModel() {
+    const s = eng.stats();
+    $('mx-ours').innerHTML = '<div><b>' + pct(s.precision) + '</b> precision</div><div><b>' + pct(s.recall) + '</b> recall</div><div><b>' + pct(s.fpr, 2) + '</b> false positives</div>';
+    $('mx-rules').innerHTML = '<div><b>' + pct(s.rPrecision) + '</b> precision</div><div><b>' + pct(s.rRecall) + '</b> recall</div><div><b>' + pct(s.rFpr, 2) + '</b> false positives</div>';
+    $('caught').textContent = s.caught + ' of ' + s.total + ' patterns caught';
+  }
+
+  function renderAll(full) {
+    renderKpis(); renderStream(); renderDecision(); renderGraph();
+    if (full || tickN % 3 === 0) { renderCases(); renderDist(); renderModel(); }
+    $('clock').textContent = Engine.fmtClock(eng.clock);
+    $('txn').textContent = Engine.fmt(eng.count);
+  }
+
+  function step() {
+    eng.tick(); tickN++;
+    renderAll(false);
+  }
+  function start() {
+    if (timer) clearInterval(timer);
+    timer = setInterval(step, 800);
+    running = true; $('play').textContent = 'Pause'; $('live').classList.remove('paused'); $('live').textContent = 'Live';
+  }
+  function stop() {
+    clearInterval(timer); timer = null; running = false;
+    $('play').textContent = 'Resume'; $('live').classList.add('paused'); $('live').textContent = 'Paused';
+  }
+
+  function flash(msg) {
+    const n = $('toast'); n.textContent = msg; n.hidden = false;
+    clearTimeout(flash.t); flash.t = setTimeout(() => { n.hidden = true; }, 3800);
+  }
+
+  $('play').addEventListener('click', () => running ? stop() : start());
+  $('inject').addEventListener('click', () => {
+    const type = $('ptype').value;
+    eng.inject(type === 'random' ? null : type);
+    flash('Pattern queued. Its payments will arrive over the next few seconds.');
+  });
+  $('stream').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return;
+    selId = tr.dataset.id; renderStream(); renderDecision();
+  });
+  $('cases').addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    const id = b.dataset.id, act = b.dataset.act;
+    const msg = act === 'confirm' ? eng.confirm(id) : act === 'clear' ? eng.clear(id) : eng.escalate(id);
+    flash(msg); renderCases(); renderGraph(); renderModel();
+  });
+  [['sStepUp', 'stepUp', 'vStepUp'], ['sHold', 'hold', 'vHold'], ['sBlock', 'block', 'vBlock']].forEach(([sid, key, vid]) => {
+    const el = $(sid);
+    el.value = eng.thresholds[key]; $(vid).textContent = el.value;
+    el.addEventListener('input', () => {
+      let v = +el.value;
+      const t = eng.thresholds;
+      if (key === 'stepUp') v = Math.min(v, t.hold - 5);
+      if (key === 'hold') v = Math.max(Math.min(v, t.block - 5), t.stepUp + 5);
+      if (key === 'block') v = Math.max(v, t.hold + 5);
+      t[key] = v; el.value = v; $(vid).textContent = v;
+      renderDecision(); renderDist();
+    });
+  });
+  $('reset').addEventListener('click', () => {
+    stop(); eng = Engine.create(7 + (++feedN)); eng.warm(420); selId = null; tickN = 0;
+    renderAll(true); start(); flash('Fresh synthetic book loaded.');
+  });
+
+  renderAll(true);
+  start();
+})();
+</script>
+
+</body></html>
